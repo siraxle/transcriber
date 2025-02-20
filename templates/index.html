@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcriber</title>
+</head>
+<body>
+    <h1>Transcriber</h1>
+
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" id="fileInput" name="file" accept="audio/*, video/*" required>
+        <button type="submit">Load and start</button>
+    </form>
+
+    <div id="results">
+        <h2>Transcript:</h2>
+        <pre id="transcript"></pre>
+        <h2>Response LLM:</h2>
+        <pre id="llmResponse"></pre>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('file', document.getElementById('fileInput').files[0]);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('transcript').textContent = data.transcript;
+                document.getElementById('llmResponse').textContent = data.llm_response;
+            })
+            .catch(error => console.error('Ошибка:', error));
+        });
+    </script>
+</body>
+</html>
