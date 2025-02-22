@@ -180,3 +180,7 @@ cython_debug/
 .pypirc
 
 /uploads
+*.txt
+*.srt
+*.json
+*.tsv

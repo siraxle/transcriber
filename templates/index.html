@@ -1,31 +1,165 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcriber</title>
+    <title>Transcriber and Summarizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group input[type="file"] {
+            font-size: 16px;
+            padding: 10px;
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+
+        .form-group button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .form-group button:hover {
+            background-color: #45a049;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            font-size: 18px;
+            color: #4CAF50;
+        }
+
+        .results {
+            margin-top: 20px;
+        }
+
+        .result-container {
+            margin-bottom: 20px;
+        }
+
+        .results pre {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .error {
+            color: red;
+        }
+
+        /* Стиль для кнопок сворачивания */
+        .toggle-btn {
+            background-color: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+
+        .toggle-btn:hover {
+            background-color: #e0e0e0;
+        }
+
+        .collapsed {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-    <h1>Transcriber</h1>
+    <div class="container">
+        <h1>AI Meeting Summarizer</h1>
+        
+        <div class="form-group">
+            <input type="file" id="fileInput" name="file" accept="audio/*, video/*, .txt" required>
+            <button type="submit" id="submitBtn">Upload and Start</button>
+        </div>
 
-    <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" id="fileInput" name="file" accept="audio/*, video/*" required>
-        <button type="submit">Load and start</button>
-    </form>
+        <div class="loading">
+            <p>Loading, please wait...</p>
+        </div>
 
-    <div id="results">
-        <h2>Transcript:</h2>
-        <pre id="transcript"></pre>
-        <h2>Response LLM:</h2>
-        <pre id="llmResponse"></pre>
+        <div class="results">
+            <div class="result-container">
+                <button class="toggle-btn" onclick="toggleVisibility('transcriptContainer')">Toggle Transcript</button>
+                <div id="transcriptContainer" class="collapsed">
+                    <h2>Transcript:</h2>
+                    <pre id="transcript"></pre>
+                </div>
+            </div>
+
+            <div class="result-container">
+                <button class="toggle-btn" onclick="toggleVisibility('llmResponseContainer')">Toggle LLM Response</button>
+                <div id="llmResponseContainer" class="collapsed">
+                    <h2>LLM Response:</h2>
+                    <pre id="llmResponse"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="error" id="errorMessage"></div>
     </div>
 
     <script>
-        document.getElementById('uploadForm').addEventListener('submit', function (e) {
+        document.getElementById('submitBtn').addEventListener('click', function (e) {
             e.preventDefault();
 
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Clear previous error messages
+            errorMessage.textContent = '';
+
+            // Show loading indicator
+            document.querySelector('.loading').style.display = 'block';
+
+            // Check if a file is selected
+            if (!file) {
+                errorMessage.textContent = "Please select a file to upload!";
+                document.querySelector('.loading').style.display = 'none';
+                return;
+            }
+
             const formData = new FormData();
-            formData.append('file', document.getElementById('fileInput').files[0]);
+            formData.append('file', file);
 
             fetch('/upload', {
                 method: 'POST',
@@ -33,11 +167,27 @@
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById('transcript').textContent = data.transcript;
-                document.getElementById('llmResponse').textContent = data.llm_response;
+                // Check if we got a transcript or error
+                if (data.transcript === "No transcript available.") {
+                    errorMessage.textContent = "Error: Unable to transcribe the file.";
+                } else {
+                    document.getElementById('transcript').textContent = data.transcript || "No transcript available.";
+                    document.getElementById('llmResponse').textContent = data.llm_response || "No response from LLM.";
+                }
+                document.querySelector('.loading').style.display = 'none';
             })
-            .catch(error => console.error('Ошибка:', error));
+            .catch(error => {
+                console.error('Error:', error);
+                errorMessage.textContent = "An error occurred while processing your request. Please try again later.";
+                document.querySelector('.loading').style.display = 'none';
+            });
         });
+
+        // Функция для переключения видимости блоков
+        function toggleVisibility(id) {
+            const element = document.getElementById(id);
+            element.classList.toggle('collapsed');
+        }
     </script>
 </body>
 </html>
