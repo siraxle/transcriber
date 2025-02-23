@@ -3,6 +3,9 @@ import os
 from flask import Flask, request, jsonify
 import subprocess
 
+# Убедитесь, что установлена версия 1.64.0
+# pip install openai==1.64.0
+
 # Инициализация Flask
 app = Flask(__name__)
 
@@ -94,8 +97,10 @@ def transcribe_audio(file_path, use_local_whisper):
         return transcription.text
 
 def process_text_file(file_path):
+    # Чтение содержимого текстового файла и удаление лишних символов переноса строки
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
+            # Чтение текста и удаление лишних переносов строк
             text = f.read().replace('\n', ' ').replace('\r', '')
             return text.strip()
     except Exception as e:
@@ -105,9 +110,10 @@ def split_text(text, max_length=3000):
     """Разбиение текста на части, чтобы избежать превышения лимита токенов"""
     parts = []
     while len(text) > max_length:
+        # Ищем границу (например, на пробелах)
         split_point = text.rfind(' ', 0, max_length)
         if split_point == -1:
-            split_point = max_length
+            split_point = max_length  # Если нет пробела, разрываем на max_length
         parts.append(text[:split_point])
         text = text[split_point:].strip()
     if text:
@@ -117,7 +123,9 @@ def split_text(text, max_length=3000):
 def process_with_llm(text, llm_model):
     print(f"Sending text to LLM: {text[:200]}...")  # Логируем текст (первые 200 символов для краткости)
 
+    # Разбиваем текст на части, если он слишком длинный
     text_parts = split_text(text)
+
     responses = []
     for part in text_parts:
         try:
