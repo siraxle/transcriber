@@ -1,7 +1,4 @@
-# TODO возможно import openai не нужно
-import openai
 from openai import OpenAI
-
 import os
 from flask import Flask, request, jsonify
 import subprocess
@@ -17,7 +14,9 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 LOCAL_LLM_URL = "http://localhost:1234/v1"  # Локальный сервер для LLM
 NVIDIA_LLM_URL = "https://integrate.api.nvidia.com/v1"
 
-openai.api_key = "YOUR_API_KEY"  # TODO не нужно?
+# Инициализация клиентов OpenAI
+local_client = OpenAI(api_key="YOUR_API_KEY", base_url=LOCAL_LLM_URL)  # Для локального сервера
+nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для NVIDIA API
 
 # Папка для сохранения загруженных файлов
 UPLOAD_FOLDER = './uploads'
@@ -35,7 +34,6 @@ def upload_file():
         return jsonify({"error": "No file part"}), 400
 
     use_local_whisper = request.form.get('use_local_whisper') == 'true'
-
     llm_model = request.form.get('llm_model')  # По умолчанию 'local'
 
     print(f'use_local_whisper={use_local_whisper}, llm_model={llm_model}')
@@ -70,8 +68,6 @@ def upload_file():
     return jsonify({"transcript": transcript, "llm_response": response_text})
 
 def transcribe_audio(file_path, use_local_whisper):
-    # Команда для транскрипции с помощью Whisper
-    print(type(use_local_whisper))
     if use_local_whisper:
         print('Local Whisper processing...')
         result = subprocess.run(['whisper', file_path], capture_output=True, text=True)
@@ -98,10 +94,8 @@ def transcribe_audio(file_path, use_local_whisper):
         return transcription.text
 
 def process_text_file(file_path):
-    # Чтение содержимого текстового файла и удаление лишних символов переноса строки
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            # Чтение текста и удаление лишних переносов строк
             text = f.read().replace('\n', ' ').replace('\r', '')
             return text.strip()
     except Exception as e:
@@ -111,10 +105,9 @@ def split_text(text, max_length=3000):
     """Разбиение текста на части, чтобы избежать превышения лимита токенов"""
     parts = []
     while len(text) > max_length:
-        # Ищем границу (например, на пробелах)
         split_point = text.rfind(' ', 0, max_length)
         if split_point == -1:
-            split_point = max_length  # Если нет пробела, разрываем на max_length
+            split_point = max_length
         parts.append(text[:split_point])
         text = text[split_point:].strip()
     if text:
@@ -124,33 +117,16 @@ def split_text(text, max_length=3000):
 def process_with_llm(text, llm_model):
     print(f"Sending text to LLM: {text[:200]}...")  # Логируем текст (первые 200 символов для краткости)
 
-    # Разбиваем текст на части, если он слишком длинный
     text_parts = split_text(text)
-
     responses = []
     for part in text_parts:
         try:
-            # Выполняем запрос к API для каждой части текста
             response = llm_request(part, llm_model)
-
             responses.append(response.choices[0].message.content)
-
-            # TODO поменялось в новой версии библиотеки OpenAI?
-            # # Добавляем ответ для каждой части
-            # if isinstance(response, ChatCompletion) and 'choices' in response:
-            #     if len(response['choices']) > 0:
-            #         responses.append(response['choices'][0].get('message', {}).get('content', 'No content returned.'))
-            #     else:
-            #         responses.append("No valid response from LLM.")
-            # else:
-            #     responses.append(f"Error: Unexpected response format or missing 'choices' in response: {response}")
-
         except Exception as e:
-            # Логируем ошибку
-            print(f"Error contacting LLM: {str(e)}")  # Логирование ошибки
+            print(f"Error contacting LLM: {str(e)}")
             responses.append(f"Error contacting LLM: {str(e)}")
 
-    # Объединяем ответы из разных частей
     return "\n\n".join(responses)
 
 def llm_request(text, llm_model):
@@ -162,38 +138,32 @@ def llm_request(text, llm_model):
 
     if llm_model == 'local':
         print("Local LLM processing...")
-
-        # TODO поменялось в новой версии библиотеки OpenAI?
-        response = openai.ChatCompletion.create(
+        response = local_client.chat.completions.create(
             model="meta-llama-3.1-8b-instruct",  # Локальный сервер LLM
             messages=[{
                 "role": "system",
                 "content": summary_prompt
             },
-                {
-                    "role": "user",
-                    "content": text
-                }],
+            {
+                "role": "user",
+                "content": text
+            }],
             temperature=0.5,
-            max_tokens=102400,
-            api_base=LOCAL_LLM_URL  # Локальный сервер LLM
+            max_tokens=102400
         )
         return response
     else:
         print(f'NVidia LLM {llm_model} processing...')
-
-        client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)
-
-        response =  client.chat.completions.create(
+        response = nvidia_client.chat.completions.create(
             model=llm_model,
             messages=[{
                 "role": "system",
                 "content": summary_prompt
             },
-                {
-                    "role": "user",
-                    "content": text
-                }],
+            {
+                "role": "user",
+                "content": text
+            }],
             temperature=0.5,
             max_tokens=102400
         )
