@@ -3,12 +3,17 @@ import os
 from flask import Flask, request, jsonify
 import subprocess
 
+# Убедитесь, что установлена версия 1.64.0
+# pip install openai==1.64.0
+
 # Инициализация Flask
 app = Flask(__name__)
 
-# Инициализация клиента LLM
-openai.api_key = "YOUR_API_KEY"  # Замените на ваш API ключ
-base_url = "http://localhost:1234/v1"  # Локальный сервер для LLM
+# Инициализация клиента OpenAI
+openai_client = openai.OpenAI(
+    api_key="YOUR_API_KEY",  # Замените на ваш API ключ
+    base_url="http://localhost:1234/v1"  # Локальный сервер для LLM
+)
 
 # Папка для сохранения загруженных файлов
 UPLOAD_FOLDER = './uploads'
@@ -102,29 +107,25 @@ def process_with_llm(text):
     for part in text_parts:
         try:
             # Выполняем запрос к API для каждой части текста
-            response = openai.ChatCompletion.create(
+            response = openai_client.chat.completions.create(
                 model="meta-llama-3.1-8b-instruct",  # Локальный сервер LLM
                 messages=[{
-                    "role": "system", 
+                    "role": "system",
                     "content": "Ты помощник по суммаризации текстов. Извлекай только самые важные моменты из текста: ключевые идеи, факты, выводы. Не добавляй лишних деталей или интерпретаций. Выводи информацию в формате markdown, придерживаясь четкости и лаконичности. Используй только предоставленный текст и не добавляй информацию о процессе работы модели. Ничего не придумывай, выводи только конспект."
                 },
                 {
-                    "role": "user", 
+                    "role": "user",
                     "content": part
                 }],
                 temperature=0.5,
-                max_tokens=102400,
-                api_base=base_url  # Локальный сервер LLM
+                max_tokens=102400
             )
 
             # Добавляем ответ для каждой части
-            if isinstance(response, dict) and 'choices' in response:
-                if len(response['choices']) > 0:
-                    responses.append(response['choices'][0].get('message', {}).get('content', 'No content returned.'))
-                else:
-                    responses.append("No valid response from LLM.")
+            if response.choices:
+                responses.append(response.choices[0].message.content)
             else:
-                responses.append(f"Error: Unexpected response format or missing 'choices' in response: {response}")
+                responses.append("No valid response from LLM.")
 
         except Exception as e:
             # Логируем ошибку
