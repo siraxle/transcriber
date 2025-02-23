@@ -19,7 +19,8 @@ NVIDIA_LLM_URL = "https://integrate.api.nvidia.com/v1"
 
 # Инициализация клиентов OpenAI
 local_client = OpenAI(api_key="YOUR_API_KEY", base_url=LOCAL_LLM_URL)  # Для локального сервера
-nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для NVIDIA API
+nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для LLM NVIDIA API
+openai_client = OpenAI(api_key=OPEN_AI_API_KEY) # Для OpenAI Whisper API
 
 # Папка для сохранения загруженных файлов
 UPLOAD_FOLDER = './uploads'
@@ -86,9 +87,8 @@ def transcribe_audio(file_path, use_local_whisper):
             return f"Error during transcription: {result.stderr.strip()}"  # Ошибка транскрипции
     else:
         print('OpenAI API Whisper processing...')
-        client = OpenAI(api_key=OPEN_AI_API_KEY)
         audio_file = open(file_path, "rb")
-        transcription = client.audio.transcriptions.create(
+        transcription = openai_client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file
         )
