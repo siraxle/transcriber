@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/html">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -109,7 +109,22 @@
         
         <div class="form-group">
             <input type="file" id="fileInput" name="file" accept="audio/*, video/*, .txt" required>
-            <button type="submit" id="submitBtn">Upload and Start</button>
+
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="useLocalWhisper" name="use_local_whisper"> Use local Whisper </input>
+                </label>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <label for="llmModel">LLM model:</label>
+                <select id="llmModel" name="llm_model">
+                    <option value="local" selected>local</option>
+                    <option value="deepseek-ai/deepseek-r1">deepseek-ai/deepseek-r1</option>
+                </select>
+            </div>
+
+            <button style="margin-top: 10px;" type="submit" id="submitBtn">Upload and Start</button>
         </div>
 
         <div class="loading">
@@ -143,6 +158,8 @@
 
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
+            const useLocalWhisper = document.getElementById('useLocalWhisper').checked; // Чекбокс
+            const llmModel = document.getElementById('llmModel').value;
             const errorMessage = document.getElementById('errorMessage');
 
             // Clear previous error messages
@@ -160,6 +177,8 @@
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('use_local_whisper', useLocalWhisper);
+            formData.append('llm_model', llmModel);
 
             fetch('/upload', {
                 method: 'POST',
