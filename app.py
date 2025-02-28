@@ -2,6 +2,7 @@ from openai import OpenAI
 import os
 from flask import Flask, request, jsonify
 import subprocess
+import re
 
 # Убедитесь, что установлена версия 1.64.0
 # pip install openai==1.64.0
@@ -21,6 +22,9 @@ NVIDIA_LLM_URL = "https://integrate.api.nvidia.com/v1"
 local_client = OpenAI(api_key="YOUR_API_KEY", base_url=LOCAL_LLM_URL)  # Для локального сервера
 nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для LLM NVIDIA API
 openai_client = OpenAI(api_key=OPEN_AI_API_KEY) # Для OpenAI Whisper API
+
+# названия моделей
+DEEP_SEEK_MODEL = 'deepseek-ai/deepseek-r1'
 
 # Папка для сохранения загруженных файлов
 UPLOAD_FOLDER = './uploads'
@@ -66,7 +70,9 @@ def upload_file():
     # Отправляем текст в LLM для обработки
     response_text = process_with_llm(transcript, llm_model)
 
-    print(f"LLM response: {response_text}")  # Логирование ответа от LLM
+    response_text = format_llm_response(llm_model, response_text)
+
+    print(f"LLM response: {response_text[:200]}")  # Логирование ответа от LLM
 
     # Возвращаем результат с правильной кодировкой
     return jsonify({"transcript": transcript, "llm_response": response_text})
@@ -124,7 +130,9 @@ def process_with_llm(text, llm_model):
     print(f"Sending text to LLM: {text[:200]}...")  # Логируем текст (первые 200 символов для краткости)
 
     # Разбиваем текст на части, если он слишком длинный
-    text_parts = split_text(text)
+    max_length = get_context_size(llm_model, default_size=3000)
+    print(f"Размер контекста = {max_length}")
+    text_parts = split_text(text, max_length)
 
     responses = []
     for part in text_parts:
@@ -175,6 +183,20 @@ def llm_request(text, llm_model):
             temperature=0.5,
             max_tokens=102400
         )
+        return response
+
+def get_context_size(model_name: str, default_size: int = 3000) -> int:
+    model_context_map = {
+        DEEP_SEEK_MODEL : 100000
+    }
+
+    return model_context_map.get(model_name, default_size)
+
+def format_llm_response(llm_model, response):
+    if llm_model == DEEP_SEEK_MODEL:
+        # удаляем тег think для DeepSeek
+        return re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+    else:
         return response
 
 if __name__ == '__main__':
