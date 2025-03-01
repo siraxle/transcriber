@@ -153,6 +153,21 @@
             color: #666;
             margin: 1em 0;
         }
+
+        #customPromptGroup textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        #customPromptGroup label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -175,6 +190,23 @@
                     <option value="local" selected>local</option>
                     <option value="deepseek-ai/deepseek-r1">deepseek-ai/deepseek-r1</option>
                 </select>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <label for="promptType">Выберите тип промпта:</label>
+                <select id="promptType" name="prompt_type">
+                    <option value="summarization">Суммаризация текста</option>
+                    <option value="key_decisions">Выделение ключевых решений и задач</option>
+                    <option value="sentiment_analysis">Анализ тональности речи</option>
+                    <option value="generate_questions">Генерация вопросов</option>
+                    <option value="trend_analysis">Выявление трендов</option>
+                    <option value="custom">Пользовательский промпт</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="customPromptGroup" style="display: none;">
+                <label for="customPrompt">Введите свой промпт:</label>
+                <textarea id="customPrompt" name="custom_prompt" rows="4" placeholder="Введите ваш промпт..."></textarea>
             </div>
 
             <button style="margin-top: 10px;" type="submit" id="submitBtn">Upload and Start</button>
@@ -210,6 +242,17 @@
     </div>
 
     <script>
+        // Показываем/скрываем поле для пользовательского промпта
+        document.getElementById('promptType').addEventListener('change', function () {
+            const customPromptGroup = document.getElementById('customPromptGroup');
+            if (this.value === 'custom') {
+                customPromptGroup.style.display = 'block';
+            } else {
+                customPromptGroup.style.display = 'none';
+            }
+        });
+
+        // Обновленный обработчик отправки формы
         document.getElementById('submitBtn').addEventListener('click', function (e) {
             e.preventDefault();
 
@@ -217,6 +260,8 @@
             const file = fileInput.files[0];
             const useLocalWhisper = document.getElementById('useLocalWhisper').checked;
             const llmModel = document.getElementById('llmModel').value;
+            const promptType = document.getElementById('promptType').value;
+            const customPrompt = document.getElementById('customPrompt').value;
             const errorMessage = document.getElementById('errorMessage');
 
             errorMessage.textContent = '';
@@ -232,6 +277,10 @@
             formData.append('file', file);
             formData.append('use_local_whisper', useLocalWhisper);
             formData.append('llm_model', llmModel);
+            formData.append('prompt_type', promptType);
+            if (promptType === 'custom') {
+                formData.append('custom_prompt', customPrompt);
+            }
 
             fetch('/upload', {
                 method: 'POST',

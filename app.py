@@ -28,6 +28,32 @@ UPLOAD_FOLDER = './uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Готовые промпты
+PROMPTS = {
+    "key_decisions": '''
+    Ты помощник по анализу встреч. Выдели ключевые решения и задачи, которые были приняты или поставлены на встрече.
+    Выведи их в формате списка, используя Markdown. Не добавляй лишних деталей.
+    ''',
+    "sentiment_analysis": '''
+    Ты помощник по анализу тональности речи. Проанализируй текст и определи, является ли тон речи позитивным, негативным или нейтральным.
+    Выведи результат в формате: "Тональность: [позитивная/негативная/нейтральная]". Обоснуй свой вывод.
+    ''',
+    "generate_questions": '''
+    Ты помощник по генерации вопросов. На основе текста встречи сгенерируй список вопросов, которые могут возникнуть у участников.
+    Выведи вопросы в формате списка, используя Markdown.
+    ''',
+    "trend_analysis": '''
+    Ты помощник по анализу трендов. Выяви основные тренды или повторяющиеся темы в тексте встречи.
+    Выведи их в формате списка, используя Markdown. Например: "Тренд: [описание тренда]".
+    ''',
+    "summarization": '''
+    Ты помощник по суммаризации текстов. Извлекай только самые важные моменты из текста: 
+    ключевые идеи, факты, выводы. Не добавляй лишних деталей или интерпретаций. Выводи информацию 
+    в формате markdown, придерживаясь четкости и лаконичности. Используй только предоставленный текст и 
+    не добавляй информацию о процессе работы модели. Ничего не придумывай, выводи только конспект.
+    ''',
+}
+
 
 # Функция для очистки Markdown
 def clean_markdown(text):
@@ -43,7 +69,7 @@ def clean_markdown(text):
 # Главная страница с формой
 @app.route('/')
 def index():
-    return open('templates/index.html').read()
+    return open('templates/index.html', encoding='utf-8').read()
 
 
 # Эндпоинт для загрузки файла
@@ -53,7 +79,9 @@ def upload_file():
         return jsonify({"error": "No file part"}), 400
 
     use_local_whisper = request.form.get('use_local_whisper') == 'true'
-    llm_model = request.form.get('llm_model')  # По умолчанию 'local'
+    llm_model = request.form.get('llm_model')
+    prompt_type = request.form.get('prompt_type')  # Тип промпта (готовый или пользовательский)
+    custom_prompt = request.form.get('custom_prompt', '')  # Пользовательский промпт
 
     print(f'use_local_whisper={use_local_whisper}, llm_model={llm_model}')
 
@@ -75,7 +103,13 @@ def upload_file():
 
     print(f"Transcript: {transcript[:200]}")
 
-    response_text, result_filename = process_with_llm(transcript, llm_model)
+    # Выбор промпта
+    if prompt_type == "custom":
+        prompt = custom_prompt
+    else:
+        prompt = PROMPTS.get(prompt_type, PROMPTS["key_decisions"])  # По умолчанию "key_decisions"
+
+    response_text, result_filename = process_with_llm(transcript, llm_model, prompt)
 
     print(f"LLM response: {response_text}")
 
@@ -162,7 +196,7 @@ def split_text(text, max_length=3000):
 
 
 # Обработка текста с помощью LLM
-def process_with_llm(text, llm_model):
+def process_with_llm(text, llm_model, prompt):
     print(f"Sending text to LLM: {text[:200]}...")
 
     # Разбиваем текст на части, если он слишком длинный
@@ -173,7 +207,7 @@ def process_with_llm(text, llm_model):
     responses = []
     for part in text_parts:
         try:
-            response = llm_request(part, llm_model)
+            response = llm_request(part, llm_model, prompt)
             responses.append(response.choices[0].message.content)
         except Exception as e:
             print(f"Error contacting LLM: {str(e)}")
@@ -191,20 +225,14 @@ def process_with_llm(text, llm_model):
 
 
 # Запрос к LLM
-def llm_request(text, llm_model):
-    summary_prompt = '''
-    Ты помощник по суммаризации текстов. Извлекай только самые важные моменты из текста: ключевые идеи, факты, выводы. 
-    Не добавляй лишних деталей или интерпретаций. Выводи информацию в формате markdown, придерживаясь четкости и лаконичности. 
-    Используй только предоставленный текст и не добавляй информацию о процессе работы модели. Ничего не придумывай, выводи только конспект.
-    '''
-
+def llm_request(text, llm_model, prompt):
     if llm_model == 'local':
         print("Local LLM processing...")
         response = local_client.chat.completions.create(
-            model="meta-llama-3.1-8b-instruct",  # Локальный сервер LLM
+            model="meta-llama-3.1-8b-instruct",
             messages=[{
                 "role": "system",
-                "content": summary_prompt
+                "content": prompt
             },
                 {
                     "role": "user",
@@ -220,7 +248,7 @@ def llm_request(text, llm_model):
             model=llm_model,
             messages=[{
                 "role": "system",
-                "content": summary_prompt
+                "content": prompt
             },
                 {
                     "role": "user",
