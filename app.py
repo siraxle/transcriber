@@ -202,7 +202,7 @@ def process_with_llm(text, llm_model, prompt):
     # Разбиваем текст на части, если он слишком длинный
     max_length = get_context_size(llm_model, default_size=3000)
     print(f"Размер контекста = {max_length}")
-    text_parts = split_text(text)
+    text_parts = split_text(text, max_length)
 
     responses = []
     for part in text_parts:
@@ -275,6 +275,7 @@ def format_llm_response(llm_model, response):
         # удаляем тег think для DeepSeek
         return re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
     else:
+        # для всех остальных форматирование не применяем
         return response
 
 if __name__ == '__main__':
