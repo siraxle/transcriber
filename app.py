@@ -200,16 +200,17 @@ def process_with_llm(text, llm_model, prompt):
     print(f"Sending text to LLM: {text[:200]}...")
 
     # Разбиваем текст на части, если он слишком длинный
-    max_length = get_context_size(llm_model, default_size=3000)
-    print(f"Размер контекста = {max_length}")
-    text_parts = split_text(text, max_length)
+    # max_length = get_context_size(llm_model, default_size=3000)
+    # print(f"Размер контекста = {max_length}")
+    text_parts = split_text(text)
 
     responses = []
     for part in text_parts:
         try:
             response = llm_request(part, llm_model, prompt)
+            response = response.choices[0].message.content
             response = format_llm_response(llm_model, response)
-            responses.append(response.choices[0].message.content)
+            responses.append(response)
         except Exception as e:
             print(f"Error contacting LLM: {str(e)}")
             responses.append(f"Error contacting LLM: {str(e)}")
