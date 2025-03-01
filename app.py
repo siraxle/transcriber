@@ -208,6 +208,7 @@ def process_with_llm(text, llm_model, prompt):
     for part in text_parts:
         try:
             response = llm_request(part, llm_model, prompt)
+            response = format_llm_response(llm_model, response)
             responses.append(response.choices[0].message.content)
         except Exception as e:
             print(f"Error contacting LLM: {str(e)}")
@@ -216,7 +217,9 @@ def process_with_llm(text, llm_model, prompt):
     result_text = "\n\n".join(responses)
 
     # Сохраняем результат в файл
-    result_filename = f"result_{llm_model}.md"
+    # фикс для deepseek, тк название содержит слэши
+    model_name_result_file = llm_model if llm_model != DEEP_SEEK_MODEL else 'deepseek'
+    result_filename = f"result_{model_name_result_file}.md"
     result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
     with open(result_path, 'w', encoding='utf-8') as f:
         f.write(result_text)
