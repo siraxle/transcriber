@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/html">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -82,7 +82,6 @@
             color: red;
         }
 
-        /* Стиль для кнопок сворачивания */
         .toggle-btn {
             background-color: #f0f0f0;
             color: #333;
@@ -101,12 +100,66 @@
         .collapsed {
             display: none;
         }
+
+        .markdown-content {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            color: #333;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+
+        .markdown-content p {
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .markdown-content strong {
+            font-weight: bold;
+            color: #000;
+        }
+
+        .markdown-content em {
+            font-style: italic;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin-left: 20px;
+            margin-bottom: 1em;
+        }
+
+        .markdown-content code {
+            background-color: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .markdown-content pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #ddd;
+            padding-left: 10px;
+            color: #666;
+            margin: 1em 0;
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>AI Meeting Summarizer</h1>
-        
+
         <div class="form-group">
             <input type="file" id="fileInput" name="file" accept="audio/*, video/*, .txt" required>
 
@@ -144,7 +197,11 @@
                 <button class="toggle-btn" onclick="toggleVisibility('llmResponseContainer')">Toggle LLM Response</button>
                 <div id="llmResponseContainer" class="collapsed">
                     <h2>LLM Response:</h2>
-                    <pre id="llmResponse"></pre>
+                    <div id="llmResponseHtml" class="markdown-content"></div>
+                    <div>
+                        <button onclick="downloadFile('txt')">Download as TXT</button>
+                        <button onclick="downloadFile('md')">Download as MD</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -158,17 +215,13 @@
 
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
-            const useLocalWhisper = document.getElementById('useLocalWhisper').checked; // Чекбокс
+            const useLocalWhisper = document.getElementById('useLocalWhisper').checked;
             const llmModel = document.getElementById('llmModel').value;
             const errorMessage = document.getElementById('errorMessage');
 
-            // Clear previous error messages
             errorMessage.textContent = '';
-
-            // Show loading indicator
             document.querySelector('.loading').style.display = 'block';
 
-            // Check if a file is selected
             if (!file) {
                 errorMessage.textContent = "Please select a file to upload!";
                 document.querySelector('.loading').style.display = 'none';
@@ -186,12 +239,13 @@
             })
             .then(response => response.json())
             .then(data => {
-                // Check if we got a transcript or error
                 if (data.transcript === "No transcript available.") {
                     errorMessage.textContent = "Error: Unable to transcribe the file.";
                 } else {
                     document.getElementById('transcript').textContent = data.transcript || "No transcript available.";
-                    document.getElementById('llmResponse').textContent = data.llm_response || "No response from LLM.";
+                    const llmResponseHtml = document.getElementById('llmResponseHtml');
+                    llmResponseHtml.innerHTML = marked.parse(data.llm_response || "No response from LLM.");
+                    llmResponseHtml.dataset.filename = data.download_filename;
                 }
                 document.querySelector('.loading').style.display = 'none';
             })
@@ -202,10 +256,19 @@
             });
         });
 
-        // Функция для переключения видимости блоков
         function toggleVisibility(id) {
             const element = document.getElementById(id);
             element.classList.toggle('collapsed');
+        }
+
+        function downloadFile(format) {
+            const filename = document.getElementById('llmResponseHtml').dataset.filename;
+            if (!filename) {
+                alert("No file available to download.");
+                return;
+            }
+
+            window.location.href = `/download/${format}/${filename}`;
         }
     </script>
 </body>
