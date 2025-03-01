@@ -1,11 +1,9 @@
 from openai import OpenAI
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import subprocess
 import re
-
-# Убедитесь, что установлена версия 1.64.0
-# pip install openai==1.64.0
+import io
 
 # Инициализация Flask
 app = Flask(__name__)
@@ -20,8 +18,7 @@ NVIDIA_LLM_URL = "https://integrate.api.nvidia.com/v1"
 
 # Инициализация клиентов OpenAI
 local_client = OpenAI(api_key="YOUR_API_KEY", base_url=LOCAL_LLM_URL)  # Для локального сервера
-nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для LLM NVIDIA API
-openai_client = OpenAI(api_key=OPEN_AI_API_KEY) # Для OpenAI Whisper API
+nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для NVIDIA API
 
 # названия моделей
 DEEP_SEEK_MODEL = 'deepseek-ai/deepseek-r1'
@@ -31,11 +28,25 @@ UPLOAD_FOLDER = './uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+
+# Функция для очистки Markdown
+def clean_markdown(text):
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Удаляем **жирный текст**
+    text = re.sub(r'\*(.*?)\*', r'\1', text)  # Удаляем *курсив*
+    text = re.sub(r'#+\s*', '', text)  # Удаляем заголовки (#, ##)
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)  # Удаляем ссылки [текст](url)
+    text = re.sub(r'`(.*?)`', r'\1', text)  # Удаляем `код`
+    text = re.sub(r'\n\s*\n', '\n', text)  # Удаляем лишние пустые строки
+    return text.strip()
+
+
 # Главная страница с формой
 @app.route('/')
 def index():
     return open('templates/index.html').read()
 
+
+# Эндпоинт для загрузки файла
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -53,81 +64,106 @@ def upload_file():
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
     file.save(file_path)
 
-    print(f"File saved to: {file_path}")  # Логирование для отладки
+    print(f"File saved to: {file_path}")
 
-    # Проверяем тип файла
     file_extension = file.filename.split('.')[-1].lower()
 
     if file_extension in ['txt']:
-        # Обработка текстового файла
         transcript = process_text_file(file_path)
     else:
-        # Транскрибируем аудио с помощью Whisper
         transcript = transcribe_audio(file_path, use_local_whisper)
 
-    print(f"Transcript: {transcript[:200]}")  # Логирование транскрипта
+    print(f"Transcript: {transcript[:200]}")
 
-    # Отправляем текст в LLM для обработки
-    response_text = process_with_llm(transcript, llm_model)
+    response_text, result_filename = process_with_llm(transcript, llm_model)
 
-    response_text = format_llm_response(llm_model, response_text)
+    print(f"LLM response: {response_text}")
 
-    print(f"LLM response: {response_text[:200]}")  # Логирование ответа от LLM
+    return jsonify({
+        "transcript": transcript,
+        "llm_response": response_text,  # Оригинальный Markdown
+        "download_filename": result_filename  # Имя файла для скачивания
+    })
 
-    # Возвращаем результат с правильной кодировкой
-    return jsonify({"transcript": transcript, "llm_response": response_text})
 
-def transcribe_audio(file_path, use_local_whisper):
-    if use_local_whisper:
-        print('Local Whisper processing...')
-        result = subprocess.run(['whisper', file_path], capture_output=True, text=True)
+# Эндпоинт для скачивания файла
+@app.route('/download/<format>/<filename>', methods=['GET'])
+def download_file(format, filename):
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-        # Логирование результатов выполнения команды
-        print(f"Whisper output: {result.stdout}")  # Покажем stdout
-        print(f"Whisper error: {result.stderr}")   # Покажем stderr
-
-        # Если транскрипция прошла успешно, результат будет в stdout
-        if result.returncode == 0:
-            return result.stdout.strip()  # Возвращаем транскрибированный текст
-        else:
-            return f"Error during transcription: {result.stderr.strip()}"  # Ошибка транскрипции
-    else:
-        print('OpenAI API Whisper processing...')
-        audio_file = open(file_path, "rb")
-        transcription = openai_client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file
+    if format == 'txt':
+        # Чистый текст (без Markdown)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        clean_content = clean_markdown(content)
+        return send_file(
+            io.BytesIO(clean_content.encode('utf-8')),
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name=f"{filename}.txt"
         )
+    elif format == 'md':
+        # Оригинальный Markdown
+        return send_file(
+            file_path,
+            mimetype='text/markdown',
+            as_attachment=True,
+            download_name=f"{filename}.md"
+        )
+    else:
+        return jsonify({"error": "Invalid format"}), 400
 
-        print(transcription.text[:200])
-        return transcription.text
 
+# Обработка текстового файла
 def process_text_file(file_path):
-    # Чтение содержимого текстового файла и удаление лишних символов переноса строки
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            # Чтение текста и удаление лишних переносов строк
             text = f.read().replace('\n', ' ').replace('\r', '')
             return text.strip()
     except Exception as e:
         return f"Error reading text file: {str(e)}"
 
+
+# Транскрибация аудио
+def transcribe_audio(file_path, use_local_whisper):
+    if use_local_whisper:
+        print('Local Whisper processing...')
+        result = subprocess.run(['whisper', file_path], capture_output=True, text=True)
+        print(f"Whisper output: {result.stdout}")
+        print(f"Whisper error: {result.stderr}")
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            return f"Error during transcription: {result.stderr.strip()}"
+    else:
+        print('OpenAI API Whisper processing...')
+        client = OpenAI(api_key=OPEN_AI_API_KEY)
+        audio_file = open(file_path, "rb")
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
+        print(transcription.text[:200])
+        return transcription.text
+
+
+# Разбиение текста на части
 def split_text(text, max_length=3000):
-    """Разбиение текста на части, чтобы избежать превышения лимита токенов"""
     parts = []
     while len(text) > max_length:
-        # Ищем границу (например, на пробелах)
         split_point = text.rfind(' ', 0, max_length)
         if split_point == -1:
-            split_point = max_length  # Если нет пробела, разрываем на max_length
+            split_point = max_length
         parts.append(text[:split_point])
         text = text[split_point:].strip()
     if text:
         parts.append(text)
     return parts
 
+
+# Обработка текста с помощью LLM
 def process_with_llm(text, llm_model):
-    print(f"Sending text to LLM: {text[:200]}...")  # Логируем текст (первые 200 символов для краткости)
+    print(f"Sending text to LLM: {text[:200]}...")
 
     # Разбиваем текст на части, если он слишком длинный
     max_length = get_context_size(llm_model, default_size=3000)
@@ -143,8 +179,18 @@ def process_with_llm(text, llm_model):
             print(f"Error contacting LLM: {str(e)}")
             responses.append(f"Error contacting LLM: {str(e)}")
 
-    return "\n\n".join(responses)
+    result_text = "\n\n".join(responses)
 
+    # Сохраняем результат в файл
+    result_filename = f"result_{llm_model}.md"
+    result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
+    with open(result_path, 'w', encoding='utf-8') as f:
+        f.write(result_text)
+
+    return result_text, result_filename
+
+
+# Запрос к LLM
 def llm_request(text, llm_model):
     summary_prompt = '''
     Ты помощник по суммаризации текстов. Извлекай только самые важные моменты из текста: ключевые идеи, факты, выводы. 
@@ -160,10 +206,10 @@ def llm_request(text, llm_model):
                 "role": "system",
                 "content": summary_prompt
             },
-            {
-                "role": "user",
-                "content": text
-            }],
+                {
+                    "role": "user",
+                    "content": text
+                }],
             temperature=0.5,
             max_tokens=102400
         )
@@ -176,10 +222,10 @@ def llm_request(text, llm_model):
                 "role": "system",
                 "content": summary_prompt
             },
-            {
-                "role": "user",
-                "content": text
-            }],
+                {
+                    "role": "user",
+                    "content": text
+                }],
             temperature=0.5,
             max_tokens=102400
         )
