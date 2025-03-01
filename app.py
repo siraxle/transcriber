@@ -20,6 +20,9 @@ NVIDIA_LLM_URL = "https://integrate.api.nvidia.com/v1"
 local_client = OpenAI(api_key="YOUR_API_KEY", base_url=LOCAL_LLM_URL)  # Для локального сервера
 nvidia_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_LLM_URL)  # Для NVIDIA API
 
+# названия моделей
+DEEP_SEEK_MODEL = 'deepseek-ai/deepseek-r1'
+
 # Папка для сохранения загруженных файлов
 UPLOAD_FOLDER = './uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -79,6 +82,8 @@ def upload_file():
     llm_model = request.form.get('llm_model')
     prompt_type = request.form.get('prompt_type')  # Тип промпта (готовый или пользовательский)
     custom_prompt = request.form.get('custom_prompt', '')  # Пользовательский промпт
+
+    print(f'use_local_whisper={use_local_whisper}, llm_model={llm_model}')
 
     file = request.files['file']
     if file.filename == '':
@@ -194,12 +199,18 @@ def split_text(text, max_length=3000):
 def process_with_llm(text, llm_model, prompt):
     print(f"Sending text to LLM: {text[:200]}...")
 
-    text_parts = split_text(text)
+    # Разбиваем текст на части, если он слишком длинный
+    max_length = get_context_size(llm_model, default_size=3000)
+    print(f"Размер контекста = {max_length}")
+    text_parts = split_text(text, max_length)
+
     responses = []
     for part in text_parts:
         try:
             response = llm_request(part, llm_model, prompt)
-            responses.append(response.choices[0].message.content)
+            response = response.choices[0].message.content
+            response = format_llm_response(llm_model, response)
+            responses.append(response)
         except Exception as e:
             print(f"Error contacting LLM: {str(e)}")
             responses.append(f"Error contacting LLM: {str(e)}")
@@ -207,7 +218,9 @@ def process_with_llm(text, llm_model, prompt):
     result_text = "\n\n".join(responses)
 
     # Сохраняем результат в файл
-    result_filename = f"result_{llm_model}.md"
+    # фикс для deepseek, тк название содержит слэши
+    model_name_result_file = llm_model if llm_model != DEEP_SEEK_MODEL else 'deepseek'
+    result_filename = f"result_{model_name_result_file}.md"
     result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
     with open(result_path, 'w', encoding='utf-8') as f:
         f.write(result_text)
@@ -250,6 +263,20 @@ def llm_request(text, llm_model, prompt):
         )
         return response
 
+def get_context_size(model_name: str, default_size: int = 3000) -> int:
+    model_context_map = {
+        DEEP_SEEK_MODEL : 100000
+    }
+
+    return model_context_map.get(model_name, default_size)
+
+def format_llm_response(llm_model, response):
+    if llm_model == DEEP_SEEK_MODEL:
+        # удаляем тег think для DeepSeek
+        return re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+    else:
+        # для всех остальных форматирование не применяем
+        return response
 
 if __name__ == '__main__':
     app.run(debug=True)
